@@ -36,10 +36,11 @@ class DataDownloadTask(luigi.ExternalTask):
             )
             print(ddf.head(5))
             # calculate vector
+            cols = ['Uniq Id', 'Product Name', 'Selling Price', 'Image', 'About Product']
             word_embedding = WordEmbedding.from_files('words.txt', 'vectors.npy.gz')
             df_to_write = pd.DataFrame()
             for i in range(ddf.npartitions):
-                df_partition = ddf.get_partition(i).compute()
+                df_partition = ddf.get_partition(i)[cols].compute()
                 product = []
                 for index, row in df_partition.iterrows():
                     unique_id = row['Uniq Id']
@@ -50,14 +51,17 @@ class DataDownloadTask(luigi.ExternalTask):
                         product.append(description_vector)
                 df_partition['vectorized_value'] = product
                 df_to_write = df_to_write.append(df_partition, ignore_index=True)
-
+            print('Ready to write')
             ddf_to_write = dd.from_pandas(df_to_write, npartitions=ddf.npartitions)
+            ddf_to_write.fillna(0)
             file_path = self.output().path + 'product-data-*.csv'
             dask.dataframe.to_csv(df=ddf_to_write, filename=file_path, single_file=False, encoding='utf-8',
                                   mode='wt', name_function=None,
                                   compression=None,
                                   compute=True)
+            # dask.dataframe.to_parquet(df=ddf_to_write, path=self.output().path, engine='pyarrow',
+            #                           compression='gzip', compute=True)
             # ddf_to_write.to_csv(self.output().path)  # doctest: +SKIP
-            print('Ready to write')
+            print('File write complete')
         except Exception as err:
             print('Error: ', err)
